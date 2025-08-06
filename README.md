@@ -1,15 +1,21 @@
 # badage
 
-A simple command-line decryption tool that allows you to decrypt files encrypted with [age](https://github.com/FiloSottile/age) by providing the encryption passphrase via a commandline flag.
+A simple command-line encryption/decryption tool that allows you to encrypt and decrypt files with [age](https://github.com/FiloSottile/age) by providing the passphrase via a commandline flag.
 
 **This is bad. Don’t use it unles you know why you are doing it.**
 
 ## Usage
 
+Encrypt a file:
+
+```bash
+badage encrypt --passphrase "your-passphrase" --input plaintext.txt --output encrypted.age
+```
+
 Decrypt a file:
 
 ```bash
-badage --passphrase "your-passphrase" --input encrypted.age --output decrypted.txt
+badage decrypt --passphrase "your-passphrase" --input encrypted.age --output decrypted.txt
 ```
 
 ## Compatibility

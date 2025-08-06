@@ -1,4 +1,5 @@
 use age::secrecy::Secret;
+use anyhow::{bail, Context, Result};
 use clap::{Parser, Subcommand};
 use std::io::{self, Read, Write};
 
@@ -33,7 +34,7 @@ enum Commands {
     Decrypt(Args),
 }
 
-fn main() -> Result<(), Box<dyn std::error::Error>> {
+fn main() -> Result<()> {
     let cli = Cli::parse();
 
     match cli.command {
@@ -58,18 +59,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
-fn encrypt(
-    passphrase: String,
-    input: String,
-    output: String,
-    armor: bool,
-) -> Result<(), Box<dyn std::error::Error>> {
+fn encrypt(passphrase: String, input: String, output: String, armor: bool) -> Result<()> {
     let input_data = if input == "-" {
         let mut buffer = Vec::new();
-        io::stdin().read_to_end(&mut buffer)?;
+        io::stdin()
+            .read_to_end(&mut buffer)
+            .context("Failed to read from stdin")?;
         buffer
     } else {
-        std::fs::read(&input)?
+        std::fs::read(&input).with_context(|| format!("Failed to read input file: {}", input))?
     };
 
     let passphrase = Secret::new(passphrase);
@@ -78,60 +76,81 @@ fn encrypt(
     if armor {
         let mut armored = vec![];
         let armor_writer =
-            age::armor::ArmoredWriter::wrap_output(&mut armored, age::armor::Format::AsciiArmor)?;
-        let mut writer = encryptor.wrap_output(armor_writer)?;
-        writer.write_all(&input_data)?;
-        writer.finish()?;
+            age::armor::ArmoredWriter::wrap_output(&mut armored, age::armor::Format::AsciiArmor)
+                .context("Failed to create armored writer")?;
+        let mut writer = encryptor
+            .wrap_output(armor_writer)
+            .context("Failed to create encrypted writer")?;
+        writer
+            .write_all(&input_data)
+            .context("Failed to write encrypted data")?;
+        writer.finish().context("Failed to finish encryption")?;
 
         if output == "-" {
-            io::stdout().write_all(&armored)?;
+            io::stdout()
+                .write_all(&armored)
+                .context("Failed to write to stdout")?;
         } else {
-            std::fs::write(&output, &armored)?;
+            std::fs::write(&output, &armored)
+                .with_context(|| format!("Failed to write encrypted file: {}", output))?
         }
     } else {
         let mut encrypted = vec![];
-        let mut writer = encryptor.wrap_output(&mut encrypted)?;
-        writer.write_all(&input_data)?;
-        writer.finish()?;
+        let mut writer = encryptor
+            .wrap_output(&mut encrypted)
+            .context("Failed to create encrypted writer")?;
+        writer
+            .write_all(&input_data)
+            .context("Failed to write encrypted data")?;
+        writer.finish().context("Failed to finish encryption")?;
 
         if output == "-" {
-            io::stdout().write_all(&encrypted)?;
+            io::stdout()
+                .write_all(&encrypted)
+                .context("Failed to write to stdout")?;
         } else {
-            std::fs::write(&output, &encrypted)?;
+            std::fs::write(&output, &encrypted)
+                .with_context(|| format!("Failed to write encrypted file: {}", output))?
         }
     }
 
     Ok(())
 }
 
-fn decrypt(
-    passphrase: String,
-    input: String,
-    output: String,
-) -> Result<(), Box<dyn std::error::Error>> {
+fn decrypt(passphrase: String, input: String, output: String) -> Result<()> {
     let input_data = if input == "-" {
         let mut buffer = Vec::new();
-        io::stdin().read_to_end(&mut buffer)?;
+        io::stdin()
+            .read_to_end(&mut buffer)
+            .context("Failed to read from stdin")?;
         buffer
     } else {
-        std::fs::read(&input)?
+        std::fs::read(&input).with_context(|| format!("Failed to read input file: {}", input))?
     };
 
     let passphrase = Secret::new(passphrase);
 
-    let decryptor = match age::Decryptor::new(&input_data[..])? {
-        age::Decryptor::Passphrase(d) => d,
-        _ => return Err("Invalid encrypted data".into()),
-    };
+    let decryptor =
+        match age::Decryptor::new(&input_data[..]).context("Failed to parse encrypted data")? {
+            age::Decryptor::Passphrase(d) => d,
+            _ => bail!("Invalid encrypted data: expected passphrase-encrypted file"),
+        };
 
     let mut output_data = Vec::new();
-    let mut reader = decryptor.decrypt(&passphrase, None)?;
-    reader.read_to_end(&mut output_data)?;
+    let mut reader = decryptor
+        .decrypt(&passphrase, None)
+        .context("Failed to decrypt data - incorrect passphrase?")?;
+    reader
+        .read_to_end(&mut output_data)
+        .context("Failed to read decrypted data")?;
 
     if output == "-" {
-        io::stdout().write_all(&output_data)?;
+        io::stdout()
+            .write_all(&output_data)
+            .context("Failed to write to stdout")?;
     } else {
-        std::fs::write(&output, &output_data)?;
+        std::fs::write(&output, &output_data)
+            .with_context(|| format!("Failed to write decrypted file: {}", output))?
     }
 
     Ok(())

@@ -22,7 +22,7 @@ struct Args {
     #[arg(short, long, help = "Output file path or '-' for stdout")]
     output: String,
 
-    #[arg(long, help = "Use ASCII armor for encryption output")]
+    #[arg(short, long, help = "Use ASCII armor for encryption output")]
     armor: bool,
 }
 
@@ -84,7 +84,10 @@ fn encrypt(passphrase: String, input: String, output: String, armor: bool) -> Re
         writer
             .write_all(&input_data)
             .context("Failed to write encrypted data")?;
-        writer.finish().context("Failed to finish encryption")?;
+        let armor_writer = writer.finish().context("Failed to finish encryption")?;
+        armor_writer
+            .finish()
+            .context("Failed to finish armor writer")?;
 
         if output == "-" {
             io::stdout()
@@ -130,19 +133,38 @@ fn decrypt(passphrase: String, input: String, output: String) -> Result<()> {
 
     let passphrase = Secret::new(passphrase);
 
-    let decryptor =
-        match age::Decryptor::new(&input_data[..]).context("Failed to parse encrypted data")? {
+    let mut output_data = Vec::new();
+
+    // Check if input is armored and handle accordingly
+    if input_data.starts_with(b"-----BEGIN AGE ENCRYPTED FILE-----") {
+        // Handle armored input
+        let armor_reader = age::armor::ArmoredReader::new(&input_data[..]);
+        let decryptor = match age::Decryptor::new(armor_reader)
+            .context("Failed to parse armored encrypted data")?
+        {
             age::Decryptor::Passphrase(d) => d,
             _ => bail!("Invalid encrypted data: expected passphrase-encrypted file"),
         };
-
-    let mut output_data = Vec::new();
-    let mut reader = decryptor
-        .decrypt(&passphrase, None)
-        .context("Failed to decrypt data - incorrect passphrase?")?;
-    reader
-        .read_to_end(&mut output_data)
-        .context("Failed to read decrypted data")?;
+        let mut reader = decryptor
+            .decrypt(&passphrase, None)
+            .context("Failed to decrypt data - incorrect passphrase?")?;
+        reader
+            .read_to_end(&mut output_data)
+            .context("Failed to read decrypted data")?;
+    } else {
+        // Handle binary input
+        let decryptor =
+            match age::Decryptor::new(&input_data[..]).context("Failed to parse encrypted data")? {
+                age::Decryptor::Passphrase(d) => d,
+                _ => bail!("Invalid encrypted data: expected passphrase-encrypted file"),
+            };
+        let mut reader = decryptor
+            .decrypt(&passphrase, None)
+            .context("Failed to decrypt data - incorrect passphrase?")?;
+        reader
+            .read_to_end(&mut output_data)
+            .context("Failed to read decrypted data")?;
+    }
 
     if output == "-" {
         io::stdout()

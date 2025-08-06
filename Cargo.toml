@@ -1,0 +1,8 @@
+[package]
+name = "badage"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+age = "0.10"
+clap = { version = "4", features = ["derive"] }

@@ -20,6 +20,9 @@ struct Args {
 
     #[arg(short, long, help = "Output file path or '-' for stdout")]
     output: String,
+
+    #[arg(long, help = "Use ASCII armor for encryption output")]
+    armor: bool,
 }
 
 #[derive(Subcommand, Debug)]
@@ -38,13 +41,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             passphrase,
             input,
             output,
+            armor,
         }) => {
-            encrypt(passphrase, input, output)?;
+            encrypt(passphrase, input, output, armor)?;
         }
         Commands::Decrypt(Args {
             passphrase,
             input,
             output,
+            armor: _,
         }) => {
             decrypt(passphrase, input, output)?;
         }
@@ -57,6 +62,7 @@ fn encrypt(
     passphrase: String,
     input: String,
     output: String,
+    armor: bool,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let input_data = if input == "-" {
         let mut buffer = Vec::new();
@@ -69,15 +75,30 @@ fn encrypt(
     let passphrase = Secret::new(passphrase);
     let encryptor = age::Encryptor::with_user_passphrase(passphrase);
 
-    let mut encrypted = vec![];
-    let mut writer = encryptor.wrap_output(&mut encrypted)?;
-    writer.write_all(&input_data)?;
-    writer.finish()?;
+    if armor {
+        let mut armored = vec![];
+        let armor_writer =
+            age::armor::ArmoredWriter::wrap_output(&mut armored, age::armor::Format::AsciiArmor)?;
+        let mut writer = encryptor.wrap_output(armor_writer)?;
+        writer.write_all(&input_data)?;
+        writer.finish()?;
 
-    if output == "-" {
-        io::stdout().write_all(&encrypted)?;
+        if output == "-" {
+            io::stdout().write_all(&armored)?;
+        } else {
+            std::fs::write(&output, &armored)?;
+        }
     } else {
-        std::fs::write(&output, &encrypted)?;
+        let mut encrypted = vec![];
+        let mut writer = encryptor.wrap_output(&mut encrypted)?;
+        writer.write_all(&input_data)?;
+        writer.finish()?;
+
+        if output == "-" {
+            io::stdout().write_all(&encrypted)?;
+        } else {
+            std::fs::write(&output, &encrypted)?;
+        }
     }
 
     Ok(())

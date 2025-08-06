@@ -12,10 +12,22 @@ Encrypt a file:
 badage encrypt --passphrase "your-passphrase" --input plaintext.txt --output encrypted.age
 ```
 
+Encrypt with ASCII armor output:
+
+```bash
+badage encrypt --passphrase "your-passphrase" --input plaintext.txt --output encrypted.age --armor
+```
+
 Decrypt a file:
 
 ```bash
 badage decrypt --passphrase "your-passphrase" --input encrypted.age --output decrypted.txt
+```
+
+Stream encryption/decryption from stdin to stdout:
+
+```bash
+echo "secret data" | badage encrypt --passphrase "your-passphrase" --input - --output - --armor
 ```
 
 ## Compatibility

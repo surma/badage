@@ -4,9 +4,9 @@ use std::io::{self, Read, Write};
 
 #[derive(Parser, Debug)]
 #[command(name = "badage")]
-#[command(about = "Simple age-like encryption tool with passphrase as CLI flag")]
+#[command(about = "Simple age decryption tool with passphrase as CLI flag")]
 struct Args {
-    #[arg(short, long, help = "Passphrase for encryption/decryption")]
+    #[arg(short, long, help = "Passphrase for decryption")]
     passphrase: String,
 
     #[arg(short, long, help = "Input file path or '-' for stdin")]
@@ -14,9 +14,6 @@ struct Args {
 
     #[arg(short, long, help = "Output file path or '-' for stdout")]
     output: String,
-
-    #[arg(short, long, help = "Decrypt instead of encrypt")]
-    decrypt: bool,
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -32,25 +29,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let passphrase = Secret::new(args.passphrase);
 
-    let output_data = if args.decrypt {
-        let decryptor = match age::Decryptor::new(&input_data[..])? {
-            age::Decryptor::Passphrase(d) => d,
-            _ => return Err("Invalid encrypted data".into()),
-        };
-
-        let mut decrypted = Vec::new();
-        let mut reader = decryptor.decrypt(&passphrase, None)?;
-        reader.read_to_end(&mut decrypted)?;
-        decrypted
-    } else {
-        let encryptor = age::Encryptor::with_user_passphrase(passphrase);
-
-        let mut encrypted = Vec::new();
-        let mut writer = encryptor.wrap_output(&mut encrypted)?;
-        writer.write_all(&input_data)?;
-        writer.finish()?;
-        encrypted
+    let decryptor = match age::Decryptor::new(&input_data[..])? {
+        age::Decryptor::Passphrase(d) => d,
+        _ => return Err("Invalid encrypted data".into()),
     };
+
+    let mut output_data = Vec::new();
+    let mut reader = decryptor.decrypt(&passphrase, None)?;
+    reader.read_to_end(&mut output_data)?;
 
     if args.output == "-" {
         io::stdout().write_all(&output_data)?;
